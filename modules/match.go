@@ -75,6 +75,12 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 	}
 
 	for _, msg := range messages {
+		// Opcode 0 = state request (client ready)
+		if msg.GetOpCode() == 0 {
+			broadcastState(dispatcher, &mState.Game)
+			continue
+		}
+
 		var move MoveMessage
 		if err := json.Unmarshal(msg.GetData(), &move); err != nil {
 			continue
