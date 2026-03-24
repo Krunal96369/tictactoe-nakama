@@ -1,0 +1,25 @@
+# Agent/AI config
+.agent/
+.gemini/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Go
+*.so
+*.exe
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env
+.env
+.env.*
