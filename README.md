@@ -5,8 +5,8 @@ A production-ready, real-time multiplayer Tic-Tac-Toe game with **server-authori
 
 ## Live Demo
 
-- **Frontend:** [https://tictactoe-nakama.vercel.app](https://tictactoe-nakama.vercel.app)
-- **Nakama Server:** `tictactoe.krunalchauhan.me` (Oracle Cloud + Caddy SSL)
+- **Frontend:** [https://tictactoe.krunalchauhan.me](https://tictactoe.krunalchauhan.me)
+- **Nakama Server:** [https://nakama.krunalchauhan.me](https://nakama.krunalchauhan.me) (Oracle Cloud + Caddy SSL)
 
 ---
 

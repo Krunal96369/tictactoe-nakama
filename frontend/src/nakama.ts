@@ -2,7 +2,7 @@ import { Client } from "@heroiclabs/nakama-js";
 
 export const client = new Client(
   "defaultkey",
-  "tictactoe.krunalchauhan.me",
+  "nakama.krunalchauhan.me",
   "443",
   true,
 );
