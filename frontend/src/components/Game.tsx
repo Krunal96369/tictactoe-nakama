@@ -150,7 +150,7 @@ export default function Game({ session, matchInfo, onPlayAgain }: Props) {
             {gameOver && (
                 <div className="flex flex-col items-center gap-3 mt-2">
                     <p className="text-xl font-bold text-teal-400">{getResult()}</p>
-                    {opponentLeft ? (
+                    {(opponentLeft || gameState.winner === 'disconnect') ? (
                         <>
                             <p className="text-gray-400 text-sm">Opponent left the match</p>
                             <button
