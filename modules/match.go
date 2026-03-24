@@ -13,8 +13,9 @@ const tickRate = 1
 type Match struct{}
 
 type MatchState struct {
-	Game    GameState
-	Players map[string]string // presenceID -> "X" or "O"
+	Game         GameState
+	Players      map[string]string // userID -> "X" or "O"
+	RematchVotes map[string]bool   // userID -> voted for rematch
 }
 
 type MoveMessage struct {
@@ -23,7 +24,8 @@ type MoveMessage struct {
 
 func (m *Match) MatchInit(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, params map[string]interface{}) (interface{}, int, string) {
 	state := &MatchState{
-		Players: make(map[string]string),
+		Players:      make(map[string]string),
+		RematchVotes: make(map[string]bool),
 		Game: GameState{
 			Board: Board{},
 			Turn:  "X",
@@ -46,9 +48,11 @@ func (m *Match) MatchJoin(ctx context.Context, logger runtime.Logger, db *sql.DB
 		if len(mState.Players) == 0 {
 			mState.Players[p.GetUserId()] = "X"
 			mState.Game.XPlayer = p.GetUserId()
+			mState.Game.XName = p.GetUsername()
 		} else {
 			mState.Players[p.GetUserId()] = "O"
 			mState.Game.OPlayer = p.GetUserId()
+			mState.Game.OName = p.GetUsername()
 		}
 	}
 	broadcastState(dispatcher, &mState.Game)
@@ -70,15 +74,34 @@ func (m *Match) MatchLeave(ctx context.Context, logger runtime.Logger, db *sql.D
 func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, dispatcher runtime.MatchDispatcher, tick int64, state interface{}, messages []runtime.MatchData) interface{} {
 	mState := state.(*MatchState)
 
-	if mState.Game.Winner != "" || mState.Game.Draw {
-		return mState
-	}
-
 	for _, msg := range messages {
 		// Opcode 0 = state request (client ready) — reply only to sender
 		if msg.GetOpCode() == 0 {
 			data, _ := json.Marshal(&mState.Game)
 			dispatcher.BroadcastMessage(1, data, []runtime.Presence{msg}, nil, true)
+			continue
+		}
+
+		// Opcode 3 = rematch request
+		if msg.GetOpCode() == 3 {
+			mState.RematchVotes[msg.GetUserId()] = true
+			// Notify all players about the pending rematch vote (opcode 4)
+			voteData, _ := json.Marshal(map[string]int{"votes": len(mState.RematchVotes)})
+			dispatcher.BroadcastMessage(4, voteData, nil, nil, true)
+			// If both players voted, reset the game
+			if len(mState.RematchVotes) >= 2 {
+				mState.Game.Board = Board{}
+				mState.Game.Turn = "X"
+				mState.Game.Winner = ""
+				mState.Game.Draw = false
+				mState.RematchVotes = make(map[string]bool)
+				broadcastState(dispatcher, &mState.Game)
+			}
+			continue
+		}
+
+		// Skip move processing if game is over
+		if mState.Game.Winner != "" || mState.Game.Draw {
 			continue
 		}
 

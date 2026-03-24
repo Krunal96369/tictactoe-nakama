@@ -9,6 +9,8 @@ type GameState struct {
 	Draw    bool   `json:"draw"`
 	XPlayer string `json:"x_player"`
 	OPlayer string `json:"o_player"`
+	XName   string `json:"x_name"`
+	OName   string `json:"o_name"`
 }
 
 func checkWinner(b Board) string {
