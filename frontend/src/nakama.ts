@@ -2,9 +2,9 @@ import { Client } from "@heroiclabs/nakama-js";
 
 export const client = new Client(
   "defaultkey",
-  "140.238.227.116",
-  "7350",
-  false,
+  "tictactoe.krunalchauhan.me",
+  "443",
+  true,
 );
 
 export function getDeviceId(): string {
