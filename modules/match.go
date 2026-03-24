@@ -45,14 +45,20 @@ func (m *Match) MatchJoinAttempt(ctx context.Context, logger runtime.Logger, db 
 func (m *Match) MatchJoin(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, dispatcher runtime.MatchDispatcher, tick int64, state interface{}, presences []runtime.Presence) interface{} {
 	mState := state.(*MatchState)
 	for _, p := range presences {
+		// Look up the display name from the account (updated each login)
+		displayName := p.GetUsername()
+		if account, err := nk.AccountGetId(ctx, p.GetUserId()); err == nil && account.User.DisplayName != "" {
+			displayName = account.User.DisplayName
+		}
+
 		if len(mState.Players) == 0 {
 			mState.Players[p.GetUserId()] = "X"
 			mState.Game.XPlayer = p.GetUserId()
-			mState.Game.XName = p.GetUsername()
+			mState.Game.XName = displayName
 		} else {
 			mState.Players[p.GetUserId()] = "O"
 			mState.Game.OPlayer = p.GetUserId()
-			mState.Game.OName = p.GetUsername()
+			mState.Game.OName = displayName
 		}
 	}
 	broadcastState(dispatcher, &mState.Game)
