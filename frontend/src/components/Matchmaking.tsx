@@ -18,7 +18,8 @@ export default function Matchmaking({ session, onMatchFound, onCancel }: Props) 
         let cancelled = false
 
         async function startMatchmaking() {
-            const socket = client.createSocket(false, false)
+            const useSSL = window.location.protocol === 'https:'
+            const socket = client.createSocket(useSSL, false)
             socketRef.current = socket
             await socket.connect(session, true)
 
