@@ -75,9 +75,10 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 	}
 
 	for _, msg := range messages {
-		// Opcode 0 = state request (client ready)
+		// Opcode 0 = state request (client ready) — reply only to sender
 		if msg.GetOpCode() == 0 {
-			broadcastState(dispatcher, &mState.Game)
+			data, _ := json.Marshal(&mState.Game)
+			dispatcher.BroadcastMessage(1, data, []runtime.Presence{msg}, nil, true)
 			continue
 		}
 

@@ -31,7 +31,14 @@ export default function Game({ session, matchInfo, onPlayAgain }: Props) {
             setGameState(state)
         }
 
-        // Ask server to re-send current state now that our handler is ready
+        // Check for state captured by Matchmaking's early handler
+        const pending = (socket as any).__pendingState
+        if (pending) {
+            setGameState(JSON.parse(pending) as GameState)
+            delete (socket as any).__pendingState
+        }
+
+        // Also ask server to re-send state (belt-and-suspenders)
         socket.sendMatchState(matchInfo.matchId, 0, '')
 
         return () => {

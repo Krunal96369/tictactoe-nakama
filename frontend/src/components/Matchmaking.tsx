@@ -24,6 +24,12 @@ export default function Matchmaking({ session, onMatchFound, onCancel }: Props) 
 
             socket.onmatchmakermatched = (matched) => {
                 if (cancelled) return
+
+                // Capture any state broadcast that arrives before Game mounts
+                socket.onmatchdata = (data) => {
+                    ;(socket as any).__pendingState = new TextDecoder().decode(data.data)
+                }
+
                 socket.joinMatch(matched.match_id ?? '', matched.token).then(match => {
                     matchFoundRef.current = true
                     onMatchFound({ matchId: match.match_id, session, socket })
