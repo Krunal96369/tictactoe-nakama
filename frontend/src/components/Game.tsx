@@ -41,10 +41,16 @@ export default function Game({ session, matchInfo, onPlayAgain }: Props) {
         // Also ask server to re-send state (belt-and-suspenders)
         socket.sendMatchState(matchInfo.matchId, 0, '')
 
-        return () => {
-            socket.disconnect(true)
-        }
+        // Disconnect on page close (not in cleanup — StrictMode would kill the socket)
+        const onUnload = () => socket.disconnect(true)
+        window.addEventListener('beforeunload', onUnload)
+        return () => window.removeEventListener('beforeunload', onUnload)
     }, [matchInfo])
+
+    function handlePlayAgain() {
+        matchInfo.socket.disconnect(true)
+        onPlayAgain()
+    }
 
     function sendMove(position: number) {
         if (!gameState || !socketRef.current) return
@@ -113,7 +119,7 @@ export default function Game({ session, matchInfo, onPlayAgain }: Props) {
                     <p className="text-xl font-bold text-teal-400">{getResult()}</p>
                     <button
                         className="bg-teal-500 hover:bg-teal-400 text-black font-bold py-2 px-6 rounded-lg transition"
-                        onClick={onPlayAgain}
+                        onClick={handlePlayAgain}
                     >
                         Play Again
                     </button>
