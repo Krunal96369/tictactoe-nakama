@@ -69,10 +69,17 @@ func (m *Match) MatchLeave(ctx context.Context, logger runtime.Logger, db *sql.D
 	mState := state.(*MatchState)
 	for _, p := range presences {
 		delete(mState.Players, p.GetUserId())
+		delete(mState.RematchVotes, p.GetUserId())
 	}
-	if len(mState.Players) < 2 && mState.Game.Winner == "" && !mState.Game.Draw {
-		mState.Game.Winner = "disconnect"
-		broadcastState(dispatcher, &mState.Game)
+	if len(mState.Players) < 2 {
+		if mState.Game.Winner == "" && !mState.Game.Draw {
+			// Mid-game disconnect
+			mState.Game.Winner = "disconnect"
+			broadcastState(dispatcher, &mState.Game)
+		} else {
+			// Post-game leave — notify remaining player (opcode 5)
+			dispatcher.BroadcastMessage(5, []byte(`{"reason":"opponent_left"}`), nil, nil, true)
+		}
 	}
 	return mState
 }

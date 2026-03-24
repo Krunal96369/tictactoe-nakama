@@ -22,6 +22,7 @@ interface Props {
 export default function Game({ session, matchInfo, onPlayAgain }: Props) {
     const [gameState, setGameState] = useState<GameState | null>(null)
     const [rematchRequested, setRematchRequested] = useState(false)
+    const [opponentLeft, setOpponentLeft] = useState(false)
     const socketRef = useRef<Socket | null>(matchInfo.socket)
     const myUserId = session.user_id!
 
@@ -31,8 +32,12 @@ export default function Game({ session, matchInfo, onPlayAgain }: Props) {
 
         socket.onmatchdata = (data) => {
             if (data.op_code === 4) {
-                // Opcode 4 = rematch vote info (we don't strictly need to do anything here,
-                // just wait for the opcode 1 state reset when both vote)
+                // Opcode 4 = rematch vote count — ignore, just wait for board reset
+                return
+            }
+            if (data.op_code === 5) {
+                // Opcode 5 = opponent left after game over
+                setOpponentLeft(true)
                 return
             }
             
@@ -67,6 +72,10 @@ export default function Game({ session, matchInfo, onPlayAgain }: Props) {
         if (!socketRef.current) return
         socketRef.current.sendMatchState(matchInfo.matchId, 3, '')
         setRematchRequested(true)
+    }
+
+    function cancelRematch() {
+        setRematchRequested(false)
     }
 
     function handleLeave() {
@@ -141,8 +150,26 @@ export default function Game({ session, matchInfo, onPlayAgain }: Props) {
             {gameOver && (
                 <div className="flex flex-col items-center gap-3 mt-2">
                     <p className="text-xl font-bold text-teal-400">{getResult()}</p>
-                    {rematchRequested ? (
-                        <p className="text-gray-400 text-sm animate-pulse">Waiting for opponent...</p>
+                    {opponentLeft ? (
+                        <>
+                            <p className="text-gray-400 text-sm">Opponent left the match</p>
+                            <button
+                                className="bg-teal-500 hover:bg-teal-400 text-black font-bold py-2 px-4 rounded-lg transition"
+                                onClick={handleLeave}
+                            >
+                                Find New Match
+                            </button>
+                        </>
+                    ) : rematchRequested ? (
+                        <div className="flex flex-col items-center gap-2">
+                            <p className="text-gray-400 text-sm animate-pulse">Waiting for opponent...</p>
+                            <button
+                                className="text-gray-500 hover:text-white text-sm underline transition"
+                                onClick={cancelRematch}
+                            >
+                                Cancel
+                            </button>
+                        </div>
                     ) : (
                         <div className="flex gap-3">
                             <button
