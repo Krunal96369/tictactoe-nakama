@@ -1,7 +1,7 @@
 import { Client } from "@heroiclabs/nakama-js";
 
 export const client = new Client(
-  "defaultkey",
+  import.meta.env.VITE_NAKAMA_KEY || "defaultkey",
   "nakama.krunalchauhan.me",
   "443",
   true,

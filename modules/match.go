@@ -16,6 +16,7 @@ type MatchState struct {
 	Game         GameState
 	Players      map[string]string // userID -> "X" or "O"
 	RematchVotes map[string]bool   // userID -> voted for rematch
+	Ending       bool
 }
 
 type MoveMessage struct {
@@ -80,12 +81,20 @@ func (m *Match) MatchLeave(ctx context.Context, logger runtime.Logger, db *sql.D
 			// Post-game leave — notify remaining player (opcode 5)
 			dispatcher.BroadcastMessage(5, []byte(`{"reason":"opponent_left"}`), nil, nil, true)
 		}
+		// Give the remaining player a moment to receive the message,
+		// then kill the match on the next tick
+		mState.Ending = true
 	}
 	return mState
 }
 
 func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, dispatcher runtime.MatchDispatcher, tick int64, state interface{}, messages []runtime.MatchData) interface{} {
 	mState := state.(*MatchState)
+
+	// Kill match if it's winding down
+	if mState.Ending {
+		return nil // returning nil terminates the match
+	}
 
 	for _, msg := range messages {
 		// Opcode 0 = state request (client ready) — reply only to sender
@@ -158,7 +167,7 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 }
 
 func (m *Match) MatchTerminate(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, dispatcher runtime.MatchDispatcher, tick int64, state interface{}, graceSeconds int) interface{} {
-	return state
+	return nil
 }
 
 func (m *Match) MatchSignal(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, dispatcher runtime.MatchDispatcher, tick int64, state interface{}, data string) (interface{}, string) {

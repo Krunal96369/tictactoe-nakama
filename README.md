@@ -34,6 +34,7 @@ A production-ready, real-time multiplayer Tic-Tac-Toe game with **server-authori
 
 - **Server is the single source of truth.** The client sends move *intents* (e.g., "place at index 4"). The server validates (correct turn? cell empty?), updates state, and broadcasts to all players. No game logic runs on the client.
 - **Nakama Matchmaker** pairs players automatically — no manual room codes needed.
+- **Device authentication** is used for frictionless onboarding. A known limitation is that clearing browser storage creates a new identity. In production, this would be mitigated by linking accounts to email/social auth via Nakama's account linking APIs.
 - **WebSocket communication** uses numbered opcodes for different message types:
 
 | Opcode | Direction | Purpose |
@@ -126,7 +127,7 @@ services:
         condition: service_healthy
     environment:
       - NAKAMA_CONSOLE_USERNAME=admin
-      - NAKAMA_CONSOLE_PASSWORD=password
+      - NAKAMA_CONSOLE_PASSWORD=${NAKAMA_CONSOLE_PASSWORD:-password}
     ports:
       - "7350:7350"   # Client API (HTTP/WebSocket)
       - "7351:7351"   # Console
@@ -137,7 +138,7 @@ services:
       && /nakama/nakama
       --database.address postgres:localdb@postgres:5432/nakama
       --runtime.path /nakama/data/modules
-      --socket.server_key defaultkey
+      --socket.server_key ${NAKAMA_SERVER_KEY:-defaultkey}
 
 volumes:
   pgdata:
@@ -163,11 +164,11 @@ Open `http://localhost:5173` in two browser tabs/windows to test.
 
 ### 4. Configure Server Address
 
-Edit `frontend/src/nakama.ts` to point to your server:
+Edit `frontend/src/nakama.ts` to point to your server (or set `VITE_NAKAMA_KEY` in `.env`):
 
 ```typescript
 export const client = new Client(
-  "defaultkey",       // Server key
+  import.meta.env.VITE_NAKAMA_KEY || "defaultkey", // Server key
   "localhost",        // Host (or your server IP)
   "7350",             // Port
   false,              // SSL (true for production with HTTPS)

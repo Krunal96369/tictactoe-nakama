@@ -1,5 +1,5 @@
 import type { Session, Socket } from '@heroiclabs/nakama-js'
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useRef } from 'react'
 import Game from './components/Game'
 import Lobby from './components/Lobby'
 import Matchmaking from './components/Matchmaking'
@@ -16,8 +16,10 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('lobby')
   const [matchInfo, setMatchInfo] = useState<MatchInfo | null>(null)
   const [session, setSession] = useState<Session | null>(null)
+  const pendingStateRef = useRef<string | null>(null)
 
-  const handleMatchFound = useCallback((info: MatchInfo) => {
+  const handleMatchFound = useCallback((info: MatchInfo, earlyState?: string) => {
+    if (earlyState) pendingStateRef.current = earlyState
     setMatchInfo(info)
     setScreen('game')
   }, [])
@@ -42,6 +44,7 @@ export default function App() {
           session={session}
           matchInfo={matchInfo}
           onPlayAgain={handlePlayAgain}
+          pendingStateRef={pendingStateRef}
         />
       )}
     </div>
