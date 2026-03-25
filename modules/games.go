@@ -3,14 +3,16 @@ package main
 type Board [9]string
 
 type GameState struct {
-	Board   Board  `json:"board"`
-	Turn    string `json:"turn"`
-	Winner  string `json:"winner"`
-	Draw    bool   `json:"draw"`
-	XPlayer string `json:"x_player"`
-	OPlayer string `json:"o_player"`
-	XName   string `json:"x_name"`
-	OName   string `json:"o_name"`
+	Board        Board  `json:"board"`
+	Turn         string `json:"turn"`
+	Winner       string `json:"winner"`
+	Draw         bool   `json:"draw"`
+	XPlayer      string `json:"x_player"`
+	OPlayer      string `json:"o_player"`
+	XName        string `json:"x_name"`
+	OName        string `json:"o_name"`
+	TurnTimeLeft int    `json:"turn_time_left"`
+	TimedOut     bool   `json:"timed_out"`
 }
 
 func checkWinner(b Board) string {

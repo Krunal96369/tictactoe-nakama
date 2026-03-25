@@ -28,8 +28,9 @@ func (m *Match) MatchInit(ctx context.Context, logger runtime.Logger, db *sql.DB
 		Players:      make(map[string]string),
 		RematchVotes: make(map[string]bool),
 		Game: GameState{
-			Board: Board{},
-			Turn:  "X",
+			Board:        Board{},
+			Turn:         "X",
+			TurnTimeLeft: 30,
 		},
 	}
 	return state, tickRate, ""
@@ -96,6 +97,21 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 		return nil // returning nil terminates the match
 	}
 
+	// Tick the turn timer once both players are present and game is active
+	if len(mState.Players) == 2 && mState.Game.Winner == "" && !mState.Game.Draw {
+		mState.Game.TurnTimeLeft--
+		if mState.Game.TurnTimeLeft <= 0 {
+			// Current player forfeits — award win to opponent
+			if mState.Game.Turn == "X" {
+				mState.Game.Winner = "O"
+			} else {
+				mState.Game.Winner = "X"
+			}
+			mState.Game.TimedOut = true
+		}
+		broadcastState(dispatcher, &mState.Game)
+	}
+
 	for _, msg := range messages {
 		// Opcode 0 = state request (client ready) — reply only to sender
 		if msg.GetOpCode() == 0 {
@@ -116,6 +132,8 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 				mState.Game.Turn = "X"
 				mState.Game.Winner = ""
 				mState.Game.Draw = false
+				mState.Game.TurnTimeLeft = 30
+				mState.Game.TimedOut = false
 				mState.RematchVotes = make(map[string]bool)
 				broadcastState(dispatcher, &mState.Game)
 			}
@@ -147,6 +165,7 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 		}
 
 		mState.Game.Board[move.Position] = playerMark
+		mState.Game.TurnTimeLeft = 30
 
 		if winner := checkWinner(mState.Game.Board); winner != "" {
 			mState.Game.Winner = winner

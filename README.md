@@ -45,6 +45,8 @@ A production-ready, real-time multiplayer Tic-Tac-Toe game with **server-authori
 | 4 | Server → Client | Rematch vote count |
 | 5 | Server → Client | Opponent left notification |
 
+`GameState` (opcode 1 payload) includes `turn_time_left` (int, 0–30) and `timed_out` (bool) for the timer feature. The server broadcasts state every tick while a game is active, keeping the client countdown in sync without client-side timers.
+
 ---
 
 ## Tech Stack
@@ -250,10 +252,10 @@ Make sure `nakama.ts` points to your production server IP before building.
 - ✅ Graceful disconnect handling (auto-win for remaining player)
 - ✅ Rematch system (both players vote → instant new game)
 - ✅ Concurrent game support (Nakama handles session isolation)
+- ✅ Timer-based game mode (30s per turn)
 
-### Planned 
+### Planned
 - ⬜ Leaderboard system (wins, losses, streaks)
-- ⬜ Timer-based game mode (30s per turn)
 
 ---
 

@@ -12,6 +12,8 @@ interface GameState {
     o_player: string
     x_name: string
     o_name: string
+    turn_time_left: number
+    timed_out: boolean
 }
 
 interface Props {
@@ -161,6 +163,9 @@ export default function Game({ session, matchInfo, onPlayAgain, pendingStateRef 
     function getResult() {
         if (gameState!.draw) return "It's a Draw!"
         if (gameState!.winner === 'disconnect') return `${oppName || 'Opponent'} disconnected. You win!`
+        if (gameState!.timed_out) {
+            return gameState!.winner === myMark ? "Opponent timed out! You Win!" : "Time's up! You Lose."
+        }
         return gameState!.winner === myMark ? 'You Win!' : 'You Lose!'
     }
 
@@ -184,9 +189,19 @@ export default function Game({ session, matchInfo, onPlayAgain, pendingStateRef 
             </div>
 
             {!gameOver && (
-                <p className="text-sm text-gray-300">
-                    {isMyTurn ? 'Your turn' : "Opponent's turn"}
-                </p>
+                <div className="flex flex-col items-center gap-1">
+                    <p className="text-sm text-gray-300">
+                        {isMyTurn ? 'Your turn' : "Opponent's turn"}
+                    </p>
+                    <div className={`text-2xl font-mono font-bold tabular-nums ${
+                        gameState.turn_time_left <= 5  ? 'text-red-400 animate-pulse' :
+                        gameState.turn_time_left <= 10 ? 'text-red-400' :
+                        gameState.turn_time_left <= 15 ? 'text-yellow-400' :
+                        'text-gray-400'
+                    }`}>
+                        ⏱ {gameState.turn_time_left}s
+                    </div>
+                </div>
             )}
 
             <div className="grid grid-cols-3 gap-2 w-full">
