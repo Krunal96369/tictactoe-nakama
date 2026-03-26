@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { client } from '../nakama'
 import type { Session, Socket } from '@heroiclabs/nakama-js'
-import type { MatchInfo } from '../App'
+import type { MatchInfo, GameMode } from '../App'
 import { motion } from 'framer-motion'
 
 interface Props {
   session: Session
+  gameMode: GameMode
   onMatchFound: (info: MatchInfo, earlyState?: string) => void
   onCancel: () => void
 }
 
-export default function Matchmaking({ session, onMatchFound, onCancel }: Props) {
+export default function Matchmaking({ session, gameMode, onMatchFound, onCancel }: Props) {
   const [status, setStatus] = useState('Finding a random player...')
   const socketRef = useRef<Socket | null>(null)
   const matchFoundRef = useRef(false)
@@ -39,8 +40,8 @@ export default function Matchmaking({ session, onMatchFound, onCancel }: Props) 
         })
       }
 
-      await socket.addMatchmaker('*', 2, 2)
-      setStatus('Finding a random player...\nIt usually takes 20 seconds.')
+      await socket.addMatchmaker(`+properties.mode:${gameMode}`, 2, 2, { mode: gameMode })
+      setStatus(`Finding a ${gameMode} match...\nIt usually takes 20 seconds.`)
     }
 
     startMatchmaking()
@@ -52,7 +53,7 @@ export default function Matchmaking({ session, onMatchFound, onCancel }: Props) 
         socketRef.current?.disconnect(true)
       }
     }
-  }, [session, onMatchFound])
+  }, [session, gameMode, onMatchFound])
 
   return (
     <motion.div 

@@ -32,7 +32,17 @@ func InitModule(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runti
 }
 
 func MakeMatch(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, entries []runtime.MatchmakerEntry) (string, error) {
-	matchID, err := nk.MatchCreate(ctx, "tictactoe", map[string]interface{}{})
+	// Read game mode from the first entry's string properties (all entries share the same mode via matchmaker query)
+	mode := "timed"
+	if len(entries) > 0 {
+		if m, ok := entries[0].GetProperties()["mode"]; ok {
+			if s, ok := m.(string); ok && s == "classic" {
+				mode = "classic"
+			}
+		}
+	}
+
+	matchID, err := nk.MatchCreate(ctx, "tictactoe", map[string]interface{}{"mode": mode})
 	if err != nil {
 		return "", err
 	}

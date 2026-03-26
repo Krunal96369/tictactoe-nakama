@@ -26,7 +26,7 @@ Real-time multiplayer tic-tac-toe built with React and Nakama. All game logic ru
 
 The client never decides if a move is valid. It sends "I want to place at index 4" and the Go server checks if it's that player's turn, if the cell is empty, etc. If valid, the server updates the board and broadcasts the new state to both players. If not, it just ignores the message.
 
-Players are matched through Nakama's built-in matchmaker. No room codes, no lobby browser. You click Play, it finds someone.
+Before queuing, players choose between **Classic** (untimed, relaxed) and **Timed** (30-second turn timer with auto-forfeit). The mode is sent as a matchmaker string property (`+properties.mode:classic` or `+properties.mode:timed`), so Classic players only match with Classic players and Timed players only match with Timed players. No room codes, no lobby browser. You pick a mode, click Play, and it finds someone.
 
 For auth, I went with device-based authentication since it's the simplest path for a game like this. The tradeoff is that clearing browser storage loses your identity. In a real product you'd link to email/social accounts through Nakama's account linking, but that felt out of scope here.
 
@@ -42,7 +42,7 @@ The client and server talk through WebSocket match data with numbered opcodes:
 | 4 | Server -> Client | Rematch vote count update |
 | 5 | Server -> Client | Opponent left the match |
 
-The game state payload (opcode 1) includes `turn_time_left` (counts down from 30) and `timed_out` (bool). The server broadcasts state every tick while a game is active, so the client timer stays in sync without running its own countdown.
+The game state payload (opcode 1) includes `turn_time_left` (counts down from 30 in timed mode, stays 0 in classic), `timed_out` (bool), and `game_mode` (`"classic"` or `"timed"`). In timed mode the server broadcasts state every tick so the client timer stays in sync without running its own countdown. In classic mode the timer is disabled and players can take as long as they want.
 
 There's also one RPC endpoint:
 
@@ -51,6 +51,63 @@ There's also one RPC endpoint:
 | `get_leaderboard` | Returns top 10 players with wins, losses, draws, current streak, and best streak |
 
 Leaderboard data lives in two places: Nakama's Leaderboard API (`tictactoe_wins`) for the ranked list sorted by wins, and Nakama's Storage API (`player_stats/stats` per user) for the extended stats like losses, draws, and streaks.
+
+## Design Decisions
+
+### Why Go over Lua or TypeScript for the server plugin
+
+Nakama supports three runtime languages: Lua, TypeScript/JavaScript, and Go. I chose Go for the server-side game logic for several reasons:
+
+**Performance and type safety.** Go compiles to a native shared object (`.so`) that runs inside the Nakama process with zero interpreter overhead. Lua and TypeScript both run through embedded interpreters, which adds latency per tick. For a game that broadcasts state every tick (1/sec here, but much faster in production shooters), that overhead compounds. Go also catches type errors at compile time rather than at runtime, which matters when you're serializing game state across the wire.
+
+**Direct access to the Nakama runtime API.** The Go runtime plugin has full low-level access to the server environment through `nakama-common/runtime`. This means match handlers (`MatchInit`, `MatchLoop`, `MatchJoin`, `MatchLeave`) are implemented as Go interfaces rather than dynamically dispatched function calls. The result is cleaner code with IDE support, compile-time interface checks, and no magic string lookups.
+
+**Production game server alignment.** Real-time multiplayer game servers (especially shooters) are overwhelmingly written in Go, C++, or Rust. Using Go for this assignment mirrors the actual production patterns: goroutine-friendly concurrency, predictable GC pauses, and the same language Nakama itself is written in. If this module needed to evolve into something handling physics ticks at 20-60Hz, Go is the natural path forward.
+
+**The tradeoff.** Go plugins require exact version pinning between the plugin and the Nakama binary (same Go toolchain version, same dependency versions). This makes the build process stricter than Lua/TS. I handle this with a multi-stage Dockerfile that uses `heroiclabs/nakama-pluginbuilder` to guarantee version alignment, so the tradeoff is manageable.
+
+### Server-authoritative architecture
+
+The client never evaluates whether a move is valid. It sends an intent ("place at index 4") and the server checks turn order, cell availability, and game phase before applying the move and broadcasting the updated state. Invalid messages are silently dropped. This prevents any client-side manipulation, which is the baseline expectation for competitive multiplayer games.
+
+The server broadcasts the full game state (board, turn, timer, winner) every tick while a match is active. This keeps the client as a thin rendering layer with no local game state to drift out of sync. The client does not run its own countdown timer; it reads `turn_time_left` from each state broadcast, which eliminates timer desync between players.
+
+### Communication protocol
+
+Rather than using a generic RPC-per-action pattern, the game uses a numbered opcode system over WebSocket match data:
+
+| Opcode | Direction | Purpose |
+|--------|-----------|---------|
+| 0 | Client -> Server | Request current state |
+| 1 | Both | Game state payload |
+| 3 | Client -> Server | Rematch vote |
+| 4 | Server -> Client | Rematch vote count |
+| 5 | Server -> Client | Opponent disconnected |
+
+This is intentionally minimal. Each opcode maps to exactly one message type, which makes the protocol easy to reason about and debug. In a production game with more message types, this same pattern scales cleanly since you can add opcodes without changing the transport layer.
+
+### Device-based authentication
+
+I used Nakama's device authentication (`AuthenticateDevice`) rather than email/password or social login. For this scope, it is the simplest path that still gives each player a persistent identity, leaderboard history, and stats. The tradeoff is that clearing browser storage loses the identity. In production, you would layer on Nakama's account linking to attach email or social accounts, but that adds UI complexity without demonstrating any additional backend capability.
+
+### Leaderboard: dual storage strategy
+
+Player rankings live in two places:
+
+1. **Nakama's Leaderboard API** (`tictactoe_wins`) handles the sorted global ranking by win count. This gives us efficient top-N queries without custom sorting logic.
+2. **Nakama's Storage API** (`player_stats/stats` per user) stores extended stats: losses, draws, current streak, and best streak.
+
+The leaderboard API is purpose-built for ranked lists but only tracks a single score value. By pairing it with per-user storage documents, we get rich stats without fighting the leaderboard abstraction. The `get_leaderboard` RPC joins both data sources into a single response for the client.
+
+### Deployment: Oracle Cloud + Docker Compose
+
+I deployed on an Oracle Cloud free-tier Compute instance (Ubuntu 22.04) with Docker Compose running Nakama + PostgreSQL. Caddy handles TLS termination and reverse proxying for the Nakama client API. The frontend is a static Vite build served separately.
+
+This setup is simple and reproducible: `git clone`, `docker compose up --build -d`, and the server is running. For a production game at scale, you would move to Kubernetes with horizontal Nakama nodes behind a load balancer, but for demonstrating the architecture and running concurrent matches, a single-node Docker Compose deployment is sufficient and easy to verify.
+
+### Match isolation and concurrency
+
+Each match runs in its own Nakama match handler instance with isolated state. There is no shared mutable state between matches. Nakama's match registry handles lifecycle management, so spinning up 100 concurrent games requires zero additional code. The `MatchJoinAttempt` handler enforces the 2-player limit per match, and if a player disconnects mid-game, `MatchLeave` awards the win to the remaining player and updates both the leaderboard and per-user stats.
 
 ## Tech stack
 
@@ -69,8 +126,8 @@ tictactoe/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Game.tsx          # Board, moves, rematch, timer display
-│   │   │   ├── Lobby.tsx         # Nickname input + theme picker
-│   │   │   ├── Matchmaking.tsx   # Matchmaker queue, socket handoff
+│   │   │   ├── Lobby.tsx         # Nickname input, mode select + theme picker
+│   │   │   ├── Matchmaking.tsx   # Matchmaker queue (mode-filtered), socket handoff
 │   │   │   └── Leaderboard.tsx   # Top players table (calls get_leaderboard RPC)
 │   │   ├── nakama.ts             # Nakama client config
 │   │   ├── App.tsx               # Screen routing + state management
@@ -189,6 +246,7 @@ Deploy the `dist/` folder to Vercel, Netlify, or whatever you prefer. Just make 
 | Console Port | `7351` | Admin dashboard |
 | gRPC Port | `7349` | Server-to-server |
 | Tick Rate | 1/sec | Match loop runs once per second |
+| Turn Timer | 30s (timed) / off (classic) | Configurable via mode selection |
 | Players per match | 2 | Enforced in `MatchJoinAttempt` |
 
 ## What's implemented
@@ -196,13 +254,14 @@ Deploy the `dist/` folder to Vercel, Netlify, or whatever you prefer. Just make 
 **Core:**
 - Server-authoritative game logic (all move validation happens on the server)
 - Automatic matchmaking via Nakama's Matchmaker API
+- Mode selection: **Classic** (untimed) or **Timed** (30s per turn, auto-forfeit)
+- Mode-filtered matchmaking (Classic players only match with Classic, Timed with Timed)
 - Real-time state sync over WebSocket
 - Player nicknames
 - Disconnect handling (remaining player wins)
 - Rematch system (both vote, board resets instantly)
 
 **Bonus:**
-- 30-second turn timer with auto-forfeit on timeout
 - Leaderboard with wins, losses, draws, and streak tracking
 - Concurrent game support (each match is isolated by Nakama's match system)
 

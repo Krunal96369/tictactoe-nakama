@@ -22,6 +22,7 @@ interface GameState {
     o_name: string
     turn_time_left: number
     timed_out: boolean
+    game_mode: 'classic' | 'timed'
 }
 
 interface Props {
@@ -212,7 +213,7 @@ export default function Game({ session, matchInfo, onPlayAgain, onLeave, pending
             <div className="h-14 flex items-center justify-center">
                 {!gameOver ? (
                     <div className="flex flex-col items-center">
-                        <motion.span 
+                        <motion.span
                             key={isMyTurn ? "my" : "opp"}
                             initial={{ opacity: 0, y: 5 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -220,13 +221,15 @@ export default function Game({ session, matchInfo, onPlayAgain, onLeave, pending
                         >
                             {isMyTurn ? 'Your turn' : "Opponent's turn"}
                         </motion.span>
-                        <span className={cn(
-                            "text-xl font-light tabular-nums transition-colors duration-300",
-                            gameState.turn_time_left <= 5 ? "text-red-400" :
-                            gameState.turn_time_left <= 10 ? "text-orange-300" : "text-zinc-400"
-                        )}>
-                            0:{gameState.turn_time_left.toString().padStart(2, '0')}
-                        </span>
+                        {gameState.game_mode === 'timed' && (
+                            <span className={cn(
+                                "text-xl font-light tabular-nums transition-colors duration-300",
+                                gameState.turn_time_left <= 5 ? "text-red-400" :
+                                gameState.turn_time_left <= 10 ? "text-orange-300" : "text-zinc-400"
+                            )}>
+                                0:{gameState.turn_time_left.toString().padStart(2, '0')}
+                            </span>
+                        )}
                     </div>
                 ) : (
                     <motion.div

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Palette as PaletteIcon } from 'lucide-react'
 import { useTheme, palettes } from '../ThemeContext'
 import type { ThemeId } from '../ThemeContext'
+import type { GameMode } from '../App'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -13,7 +14,7 @@ export function cn(...inputs: (string | undefined | null | false)[]) {
 }
 
 interface Props {
-  onPlay: (session: Session) => void
+  onPlay: (session: Session, mode: GameMode) => void
   onLeaderboard: (session: Session) => void
 }
 
@@ -22,6 +23,7 @@ export default function Lobby({ onPlay, onLeaderboard }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showThemes, setShowThemes] = useState(false)
+  const [gameMode, setGameMode] = useState<GameMode>(() => (localStorage.getItem('ttt_mode') as GameMode) || 'timed')
 
   const { theme, setTheme, palette } = useTheme()
 
@@ -38,7 +40,8 @@ export default function Lobby({ onPlay, onLeaderboard }: Props) {
     setLoading(true)
     setError('')
     try {
-      onPlay(await authenticate())
+      localStorage.setItem('ttt_mode', gameMode)
+      onPlay(await authenticate(), gameMode)
     } catch {
       setError('Failed to connect. Try again.')
     } finally {
@@ -127,6 +130,30 @@ export default function Lobby({ onPlay, onLeaderboard }: Props) {
             maxLength={20}
           />
           {error && <p className="text-red-400 text-sm">{error}</p>}
+
+          <div className="flex items-center justify-between bg-zinc-950/50 border border-zinc-800/50 rounded-xl px-4 py-2.5">
+            <span className="text-xs text-zinc-500 uppercase tracking-widest font-semibold">MODE</span>
+            <div className="flex bg-zinc-900 rounded-lg p-0.5 gap-0.5">
+              <button
+                onClick={() => setGameMode('classic')}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  gameMode === 'classic' ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+                )}
+              >
+                Classic
+              </button>
+              <button
+                onClick={() => setGameMode('timed')}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  gameMode === 'timed' ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+                )}
+              >
+                Timed
+              </button>
+            </div>
+          </div>
 
           <button
             className="bg-zinc-100 hover:bg-white text-zinc-900 font-semibold py-3 rounded-xl transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(255,255,255,0.05)]"

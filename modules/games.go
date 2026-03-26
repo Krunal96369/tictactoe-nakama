@@ -13,6 +13,7 @@ type GameState struct {
 	OName        string `json:"o_name"`
 	TurnTimeLeft int    `json:"turn_time_left"`
 	TimedOut     bool   `json:"timed_out"`
+	GameMode     string `json:"game_mode"`
 }
 
 func checkWinner(b Board) string {

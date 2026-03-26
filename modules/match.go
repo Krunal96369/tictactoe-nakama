@@ -24,13 +24,26 @@ type MoveMessage struct {
 }
 
 func (m *Match) MatchInit(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, params map[string]interface{}) (interface{}, int, string) {
+	mode := "timed"
+	if m, ok := params["mode"]; ok {
+		if s, ok := m.(string); ok && s == "classic" {
+			mode = "classic"
+		}
+	}
+
+	turnTime := 30
+	if mode == "classic" {
+		turnTime = 0
+	}
+
 	state := &MatchState{
 		Players:      make(map[string]string),
 		RematchVotes: make(map[string]bool),
 		Game: GameState{
 			Board:        Board{},
 			Turn:         "X",
-			TurnTimeLeft: 30,
+			TurnTimeLeft: turnTime,
+			GameMode:     mode,
 		},
 	}
 	return state, tickRate, ""
@@ -103,8 +116,8 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 		return nil // returning nil terminates the match
 	}
 
-	// Tick the turn timer once both players are present and game is active
-	if len(mState.Players) == 2 && mState.Game.Winner == "" && !mState.Game.Draw {
+	// Tick the turn timer once both players are present and game is active (timed mode only)
+	if mState.Game.GameMode == "timed" && len(mState.Players) == 2 && mState.Game.Winner == "" && !mState.Game.Draw {
 		mState.Game.TurnTimeLeft--
 		if mState.Game.TurnTimeLeft <= 0 {
 			// Current player forfeits — award win to opponent
@@ -139,8 +152,12 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 				mState.Game.Turn = "X"
 				mState.Game.Winner = ""
 				mState.Game.Draw = false
-				mState.Game.TurnTimeLeft = 30
 				mState.Game.TimedOut = false
+				if mState.Game.GameMode == "timed" {
+					mState.Game.TurnTimeLeft = 30
+				} else {
+					mState.Game.TurnTimeLeft = 0
+				}
 				mState.RematchVotes = make(map[string]bool)
 				broadcastState(dispatcher, &mState.Game)
 			}
@@ -172,7 +189,9 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 		}
 
 		mState.Game.Board[move.Position] = playerMark
-		mState.Game.TurnTimeLeft = 30
+		if mState.Game.GameMode == "timed" {
+			mState.Game.TurnTimeLeft = 30
+		}
 
 		if winner := checkWinner(mState.Game.Board); winner != "" {
 			mState.Game.Winner = winner

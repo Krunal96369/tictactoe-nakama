@@ -13,10 +13,13 @@ export interface MatchInfo {
   socket: Socket
 }
 
+export type GameMode = 'classic' | 'timed'
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('lobby')
   const [matchInfo, setMatchInfo] = useState<MatchInfo | null>(null)
   const [session, setSession] = useState<Session | null>(null)
+  const [gameMode, setGameMode] = useState<GameMode>('timed')
   const pendingStateRef = useRef<string | null>(null)
 
   const handleMatchFound = useCallback((info: MatchInfo, earlyState?: string) => {
@@ -39,7 +42,7 @@ export default function App() {
       <div className="relative z-10 w-full flex items-center justify-center">
         {screen === 'lobby' && (
           <Lobby
-            onPlay={(s) => { setSession(s); setScreen('matchmaking') }}
+            onPlay={(s, mode) => { setSession(s); setGameMode(mode); setScreen('matchmaking') }}
             onLeaderboard={handleLeaderboard}
           />
         )}
@@ -49,6 +52,7 @@ export default function App() {
         {screen === 'matchmaking' && session && (
           <Matchmaking
             session={session}
+            gameMode={gameMode}
             onMatchFound={handleMatchFound}
             onCancel={handleCancel}
           />
