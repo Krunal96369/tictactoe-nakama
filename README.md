@@ -3,7 +3,7 @@
 Real-time multiplayer tic-tac-toe built with React and Nakama. All game logic runs on the server, the client just sends intents and renders state.
 
 **Try it:** [tictactoe.krunalchauhan.me](https://tictactoe.krunalchauhan.me)
-**Nakama backend:** [nakama.krunalchauhan.me](https://nakama.krunalchauhan.me) (Oracle Cloud + Caddy for SSL)
+**Nakama console:** [nakama.krunalchauhan.me:7351](http://nakama.krunalchauhan.me:7351) (Oracle Cloud + Caddy for SSL)
 
 ## How it works
 
