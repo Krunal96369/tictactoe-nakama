@@ -12,11 +12,19 @@ const tickRate = 1
 
 type Match struct{}
 
+type MatchLabel struct {
+	Mode    string `json:"mode"`
+	Creator string `json:"creator"`
+	Players int    `json:"players"`
+	Open    bool   `json:"open"`
+}
+
 type MatchState struct {
 	Game         GameState
 	Players      map[string]string // userID -> "X" or "O"
 	RematchVotes map[string]bool   // userID -> voted for rematch
 	Ending       bool
+	Label        MatchLabel
 }
 
 type MoveMessage struct {
@@ -36,9 +44,24 @@ func (m *Match) MatchInit(ctx context.Context, logger runtime.Logger, db *sql.DB
 		turnTime = 0
 	}
 
+	// Rooms created via the create_room RPC pass a "creator" param to be discoverable.
+	// Matchmaker-created matches have no creator and are not listed in the room browser.
+	creator := ""
+	open := false
+	if c, ok := params["creator"]; ok {
+		if s, ok := c.(string); ok {
+			creator = s
+			open = true
+		}
+	}
+
+	label := MatchLabel{Mode: mode, Creator: creator, Players: 0, Open: open}
+	labelJSON, _ := json.Marshal(label)
+
 	state := &MatchState{
 		Players:      make(map[string]string),
 		RematchVotes: make(map[string]bool),
+		Label:        label,
 		Game: GameState{
 			Board:        Board{},
 			Turn:         "X",
@@ -46,7 +69,7 @@ func (m *Match) MatchInit(ctx context.Context, logger runtime.Logger, db *sql.DB
 			GameMode:     mode,
 		},
 	}
-	return state, tickRate, ""
+	return state, tickRate, string(labelJSON)
 }
 
 func (m *Match) MatchJoinAttempt(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, dispatcher runtime.MatchDispatcher, tick int64, state interface{}, presence runtime.Presence, metadata map[string]string) (interface{}, bool, string) {
@@ -76,6 +99,15 @@ func (m *Match) MatchJoin(ctx context.Context, logger runtime.Logger, db *sql.DB
 			mState.Game.OName = displayName
 		}
 	}
+
+	// Update label so full rooms disappear from the room browser
+	mState.Label.Players = len(mState.Players)
+	if mState.Label.Players >= 2 {
+		mState.Label.Open = false
+	}
+	labelJSON, _ := json.Marshal(mState.Label)
+	dispatcher.MatchLabelUpdate(string(labelJSON))
+
 	broadcastState(dispatcher, &mState.Game)
 	return mState
 }
@@ -105,6 +137,17 @@ func (m *Match) MatchLeave(ctx context.Context, logger runtime.Logger, db *sql.D
 		// then kill the match on the next tick
 		mState.Ending = true
 	}
+
+	// Update label: re-open room if it was a created room and game hasn't started
+	mState.Label.Players = len(mState.Players)
+	if mState.Ending || mState.Game.Winner != "" || mState.Game.Draw {
+		mState.Label.Open = false
+	} else if mState.Label.Creator != "" && mState.Label.Players < 2 {
+		mState.Label.Open = true
+	}
+	labelJSON, _ := json.Marshal(mState.Label)
+	dispatcher.MatchLabelUpdate(string(labelJSON))
+
 	return mState
 }
 

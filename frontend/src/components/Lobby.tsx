@@ -15,10 +15,11 @@ export function cn(...inputs: (string | undefined | null | false)[]) {
 
 interface Props {
   onPlay: (session: Session, mode: GameMode) => void
+  onBrowseRooms: (session: Session, mode: GameMode) => void
   onLeaderboard: (session: Session) => void
 }
 
-export default function Lobby({ onPlay, onLeaderboard }: Props) {
+export default function Lobby({ onPlay, onBrowseRooms, onLeaderboard }: Props) {
   const [nickname, setNickname] = useState(() => localStorage.getItem('ttt_nickname') || '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -42,6 +43,20 @@ export default function Lobby({ onPlay, onLeaderboard }: Props) {
     try {
       localStorage.setItem('ttt_mode', gameMode)
       onPlay(await authenticate(), gameMode)
+    } catch {
+      setError('Failed to connect. Try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleBrowseRooms() {
+    if (!nickname.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      localStorage.setItem('ttt_mode', gameMode)
+      onBrowseRooms(await authenticate(), gameMode)
     } catch {
       setError('Failed to connect. Try again.')
     } finally {
@@ -160,7 +175,15 @@ export default function Lobby({ onPlay, onLeaderboard }: Props) {
             onClick={handlePlay}
             disabled={loading || !nickname.trim()}
           >
-            {loading ? 'Connecting...' : 'Play Game'}
+            {loading ? 'Connecting...' : 'Quick Play'}
+          </button>
+
+          <button
+            className="bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 text-zinc-300 font-medium py-3 rounded-xl transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleBrowseRooms}
+            disabled={loading || !nickname.trim()}
+          >
+            Browse Rooms
           </button>
 
           <button

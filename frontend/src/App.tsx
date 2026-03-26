@@ -4,8 +4,9 @@ import Game from './components/Game'
 import Leaderboard from './components/Leaderboard'
 import Lobby from './components/Lobby'
 import Matchmaking from './components/Matchmaking'
+import RoomBrowser from './components/RoomBrowser'
 
-export type Screen = 'lobby' | 'matchmaking' | 'game' | 'leaderboard'
+export type Screen = 'lobby' | 'matchmaking' | 'game' | 'leaderboard' | 'rooms'
 
 export interface MatchInfo {
   matchId: string
@@ -43,6 +44,7 @@ export default function App() {
         {screen === 'lobby' && (
           <Lobby
             onPlay={(s, mode) => { setSession(s); setGameMode(mode); setScreen('matchmaking') }}
+            onBrowseRooms={(s, mode) => { setSession(s); setGameMode(mode); setScreen('rooms') }}
             onLeaderboard={handleLeaderboard}
           />
         )}
@@ -51,6 +53,14 @@ export default function App() {
         )}
         {screen === 'matchmaking' && session && (
           <Matchmaking
+            session={session}
+            gameMode={gameMode}
+            onMatchFound={handleMatchFound}
+            onCancel={handleCancel}
+          />
+        )}
+        {screen === 'rooms' && session && (
+          <RoomBrowser
             session={session}
             gameMode={gameMode}
             onMatchFound={handleMatchFound}

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+
 	"github.com/heroiclabs/nakama-common/runtime"
 )
 
@@ -27,8 +29,41 @@ func InitModule(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runti
 		return err
 	}
 
+	if err := initializer.RegisterRpc("create_room", CreateRoom); err != nil {
+		return err
+	}
+
 	logger.Info("TicTacToe module loaded")
 	return nil
+}
+
+func CreateRoom(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, payload string) (string, error) {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.Unmarshal([]byte(payload), &req); err != nil || (req.Mode != "classic" && req.Mode != "timed") {
+		req.Mode = "timed"
+	}
+
+	// Get creator display name from caller context
+	userID, ok := ctx.Value(runtime.RUNTIME_CTX_USER_ID).(string)
+	creator := ""
+	if ok {
+		if account, err := nk.AccountGetId(ctx, userID); err == nil && account.User.DisplayName != "" {
+			creator = account.User.DisplayName
+		}
+	}
+
+	matchID, err := nk.MatchCreate(ctx, "tictactoe", map[string]interface{}{
+		"mode":    req.Mode,
+		"creator": creator,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	resp, _ := json.Marshal(map[string]string{"match_id": matchID})
+	return string(resp), nil
 }
 
 func MakeMatch(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, entries []runtime.MatchmakerEntry) (string, error) {
