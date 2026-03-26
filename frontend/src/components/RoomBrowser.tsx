@@ -113,8 +113,8 @@ export default function RoomBrowser({ session, gameMode, onMatchFound, onCancel 
     setCreating(true)
     setError('')
     try {
-      const resp = await client.rpc(session, 'create_room', JSON.stringify({ mode: gameMode }))
-      const { match_id: matchId } = JSON.parse(resp.payload!) as { match_id: string }
+      const resp = await client.rpc(session, 'create_room', { mode: gameMode })
+      const { match_id: matchId } = resp.payload as unknown as { match_id: string }
 
       const useSSL = typeof client.useSSL !== 'undefined' ? client.useSSL : window.location.protocol === 'https:'
       const socket = client.createSocket(useSSL, false)
