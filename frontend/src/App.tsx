@@ -27,34 +27,42 @@ export default function App() {
 
   const handleCancel = useCallback(() => setScreen('lobby'), [])
   const handlePlayAgain = useCallback(() => setScreen('matchmaking'), [])
+  const handleLeaveLobby = useCallback(() => setScreen('lobby'), [])
   const handleLeaderboard = useCallback((s: Session) => { setSession(s); setScreen('leaderboard') }, [])
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-      {screen === 'lobby' && (
-        <Lobby
-          onPlay={(s) => { setSession(s); setScreen('matchmaking') }}
-          onLeaderboard={handleLeaderboard}
-        />
-      )}
-      {screen === 'leaderboard' && session && (
-        <Leaderboard session={session} onBack={() => setScreen('lobby')} />
-      )}
-      {screen === 'matchmaking' && session && (
-        <Matchmaking
-          session={session}
-          onMatchFound={handleMatchFound}
-          onCancel={handleCancel}
-        />
-      )}
-      {screen === 'game' && matchInfo && session && (
-        <Game
-          session={session}
-          matchInfo={matchInfo}
-          onPlayAgain={handlePlayAgain}
-          pendingStateRef={pendingStateRef}
-        />
-      )}
+    <div className="min-h-screen w-full relative bg-zinc-950 text-zinc-100 flex items-center justify-center overflow-hidden font-sans">
+      {/* Elegant minimalist spotlight background */}
+      <div className="absolute top-[-20%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-zinc-800/30 blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-zinc-800/30 blur-[100px] pointer-events-none" />
+      
+      <div className="relative z-10 w-full flex items-center justify-center">
+        {screen === 'lobby' && (
+          <Lobby
+            onPlay={(s) => { setSession(s); setScreen('matchmaking') }}
+            onLeaderboard={handleLeaderboard}
+          />
+        )}
+        {screen === 'leaderboard' && session && (
+          <Leaderboard session={session} onBack={() => setScreen('lobby')} />
+        )}
+        {screen === 'matchmaking' && session && (
+          <Matchmaking
+            session={session}
+            onMatchFound={handleMatchFound}
+            onCancel={handleCancel}
+          />
+        )}
+        {screen === 'game' && matchInfo && session && (
+          <Game
+            session={session}
+            matchInfo={matchInfo}
+            onPlayAgain={handlePlayAgain}
+            onLeave={handleLeaveLobby}
+            pendingStateRef={pendingStateRef}
+          />
+        )}
+      </div>
     </div>
   )
 }
