@@ -1,0 +1,483 @@
+diff --git a/README.md b/README.md
+index ea0b765..150e7f2 100644
+--- a/README.md
++++ b/README.md
+@@ -32,7 +32,7 @@ A production-ready, real-time multiplayer Tic-Tac-Toe game with **server-authori
+ 
+ ### Design Decisions
+ 
+-- **Server is the single source of truth.** The client sends move *intents* (e.g., "place at index 4"). The server validates (correct turn? cell empty?), updates state, and broadcasts to all players. No game logic runs on the client.
++- **Server handles the logic** The client sends move *intents* (e.g., "place at index 4"). The server validates (correct turn? cell empty?), updates state, and broadcasts to all players. No game logic runs on the client.
+ - **Nakama Matchmaker** pairs players automatically — no manual room codes needed.
+ - **Device authentication** is used for frictionless onboarding. A known limitation is that clearing browser storage creates a new identity. In production, this would be mitigated by linking accounts to email/social auth via Nakama's account linking APIs.
+ - **WebSocket communication** uses numbered opcodes for different message types:
+@@ -47,6 +47,14 @@ A production-ready, real-time multiplayer Tic-Tac-Toe game with **server-authori
+ 
+ `GameState` (opcode 1 payload) includes `turn_time_left` (int, 0–30) and `timed_out` (bool) for the timer feature. The server broadcasts state every tick while a game is active, keeping the client countdown in sync without client-side timers.
+ 
++| RPC ID | Direction | Purpose |
++|--------|-----------|---------|
++| `get_leaderboard` | Client → Server (HTTP RPC) | Returns top 10 players: wins, losses, draws, current streak, best streak |
++
++**Persistence layers:**
++- **Nakama Leaderboard API** (`tictactoe_wins`) — sorted global ranking by win count
++- **Nakama Storage API** (`player_stats/stats` per user) — extended stats: losses, draws, current streak, best streak
++
+ ---
+ 
+ ## Tech Stack
+@@ -251,11 +259,11 @@ Make sure `nakama.ts` points to your production server IP before building.
+ - ✅ Player nicknames displayed in-game
+ - ✅ Graceful disconnect handling (auto-win for remaining player)
+ - ✅ Rematch system (both players vote → instant new game)
+-- ✅ Concurrent game support (Nakama handles session isolation)
+-- ✅ Timer-based game mode (30s per turn)
+ 
+-### Planned
+-- ⬜ Leaderboard system (wins, losses, streaks)
++### Bonus
++- ✅ Timer-based game mode (30s per turn)
++- ✅ Leaderboard system (wins, losses, draws, win streaks — Nakama Leaderboard + Storage APIs)
++- ✅ Concurrent game support (Nakama handles session isolation)
+ 
+ ---
+ 
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 3f1c4e6..5518fbd 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -1,10 +1,11 @@
+ import type { Session, Socket } from '@heroiclabs/nakama-js'
+ import { useCallback, useState, useRef } from 'react'
+ import Game from './components/Game'
++import Leaderboard from './components/Leaderboard'
+ import Lobby from './components/Lobby'
+ import Matchmaking from './components/Matchmaking'
+ 
+-export type Screen = 'lobby' | 'matchmaking' | 'game'
++export type Screen = 'lobby' | 'matchmaking' | 'game' | 'leaderboard'
+ 
+ export interface MatchInfo {
+   matchId: string
+@@ -26,11 +27,18 @@ export default function App() {
+ 
+   const handleCancel = useCallback(() => setScreen('lobby'), [])
+   const handlePlayAgain = useCallback(() => setScreen('matchmaking'), [])
++  const handleLeaderboard = useCallback((s: Session) => { setSession(s); setScreen('leaderboard') }, [])
+ 
+   return (
+     <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+       {screen === 'lobby' && (
+-        <Lobby onJoin={(s) => { setSession(s); setScreen('matchmaking') }} />
++        <Lobby
++          onPlay={(s) => { setSession(s); setScreen('matchmaking') }}
++          onLeaderboard={handleLeaderboard}
++        />
++      )}
++      {screen === 'leaderboard' && session && (
++        <Leaderboard session={session} onBack={() => setScreen('lobby')} />
+       )}
+       {screen === 'matchmaking' && session && (
+         <Matchmaking
+diff --git a/frontend/src/components/Leaderboard.tsx b/frontend/src/components/Leaderboard.tsx
+new file mode 100644
+index 0000000..4fec0bd
+--- /dev/null
++++ b/frontend/src/components/Leaderboard.tsx
+@@ -0,0 +1,101 @@
++import type { Session } from '@heroiclabs/nakama-js'
++import { useEffect, useState } from 'react'
++import { client } from '../nakama'
++
++interface LeaderboardEntry {
++    rank: number
++    user_id: string
++    username: string
++    wins: number
++    losses: number
++    draws: number
++    current_streak: number
++    best_streak: number
++}
++
++interface Props {
++    session: Session
++    onBack: () => void
++}
++
++export default function Leaderboard({ session, onBack }: Props) {
++    const [entries, setEntries] = useState<LeaderboardEntry[]>([])
++    const [loading, setLoading] = useState(true)
++    const [error, setError] = useState('')
++
++    useEffect(() => {
++        client.rpc(session, 'get_leaderboard', '')
++            .then((result) => {
++                const data = result.payload as { entries: LeaderboardEntry[] }
++                setEntries(data?.entries ?? [])
++            })
++            .catch(() => setError('Failed to load leaderboard.'))
++            .finally(() => setLoading(false))
++    }, [session])
++
++    return (
++        <div className="bg-gray-900 rounded-2xl p-6 w-96 flex flex-col gap-4 shadow-xl">
++            <div className="flex items-center justify-between">
++                <h2 className="text-xl font-bold text-teal-400">Leaderboard</h2>
++                <button
++                    onClick={onBack}
++                    className="text-gray-400 hover:text-white text-sm underline transition"
++                >
++                    ← Back
++                </button>
++            </div>
++
++            {loading && (
++                <div className="flex justify-center py-8">
++                    <div className="w-8 h-8 border-4 border-teal-400 border-t-transparent rounded-full animate-spin" />
++                </div>
++            )}
++
++            {error && (
++                <p className="text-red-400 text-sm text-center">{error}</p>
++            )}
++
++            {!loading && !error && entries.length === 0 && (
++                <p className="text-gray-500 text-sm text-center py-4">No games played yet.</p>
++            )}
++
++            {!loading && entries.length > 0 && (
++                <div className="overflow-x-auto">
++                    <table className="w-full text-sm">
++                        <thead>
++                            <tr className="text-gray-500 border-b border-gray-700">
++                                <th className="text-left py-2 pr-2">#</th>
++                                <th className="text-left py-2 pr-2">Player</th>
++                                <th className="text-center py-2 px-1">W</th>
++                                <th className="text-center py-2 px-1">L</th>
++                                <th className="text-center py-2 px-1">D</th>
++                                <th className="text-center py-2 px-1">Streak</th>
++                                <th className="text-center py-2 pl-1">Best</th>
++                            </tr>
++                        </thead>
++                        <tbody>
++                            {entries.map((e) => (
++                                <tr
++                                    key={e.user_id}
++                                    className={`border-b border-gray-800 ${
++                                        e.user_id === session.user_id ? 'text-teal-400' : 'text-gray-300'
++                                    }`}
++                                >
++                                    <td className="py-2 pr-2 font-bold">
++                                        {e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : e.rank}
++                                    </td>
++                                    <td className="py-2 pr-2 font-medium truncate max-w-[100px]">{e.username || '—'}</td>
++                                    <td className="text-center py-2 px-1 text-teal-400 font-bold">{e.wins}</td>
++                                    <td className="text-center py-2 px-1 text-orange-400">{e.losses}</td>
++                                    <td className="text-center py-2 px-1 text-gray-400">{e.draws}</td>
++                                    <td className="text-center py-2 px-1">{e.current_streak}</td>
++                                    <td className="text-center py-2 pl-1 text-yellow-400">{e.best_streak}</td>
++                                </tr>
++                            ))}
++                        </tbody>
++                    </table>
++                </div>
++            )}
++        </div>
++    )
++}
+diff --git a/frontend/src/components/Lobby.tsx b/frontend/src/components/Lobby.tsx
+index 5677e9a..27f0bc3 100644
+--- a/frontend/src/components/Lobby.tsx
++++ b/frontend/src/components/Lobby.tsx
+@@ -3,23 +3,41 @@ import { client, getDeviceId } from '../nakama'
+ import type { Session } from '@heroiclabs/nakama-js'
+ 
+ interface Props {
+-  onJoin: (session: Session) => void
++  onPlay: (session: Session) => void
++  onLeaderboard: (session: Session) => void
+ }
+ 
+-export default function Lobby({ onJoin }: Props) {
++export default function Lobby({ onPlay, onLeaderboard }: Props) {
+   const [nickname, setNickname] = useState('')
+   const [loading, setLoading] = useState(false)
+   const [error, setError] = useState('')
+ 
+-  async function handleSubmit() {
++  async function authenticate() {
++    const deviceId = getDeviceId()
++    const session = await client.authenticateDevice(deviceId, true, nickname)
++    await client.updateAccount(session, { display_name: nickname })
++    return session
++  }
++
++  async function handlePlay() {
+     if (!nickname.trim()) return
+     setLoading(true)
+     setError('')
+     try {
+-      const deviceId = getDeviceId()
+-      const session = await client.authenticateDevice(deviceId, true, nickname)
+-      await client.updateAccount(session, { display_name: nickname })
+-      onJoin(session)
++      onPlay(await authenticate())
++    } catch {
++      setError('Failed to connect. Try again.')
++    } finally {
++      setLoading(false)
++    }
++  }
++
++  async function handleLeaderboard() {
++    if (!nickname.trim()) return
++    setLoading(true)
++    setError('')
++    try {
++      onLeaderboard(await authenticate())
+     } catch {
+       setError('Failed to connect. Try again.')
+     } finally {
+@@ -36,17 +54,24 @@ export default function Lobby({ onJoin }: Props) {
+         placeholder="Nickname"
+         value={nickname}
+         onChange={e => setNickname(e.target.value)}
+-        onKeyDown={e => e.key === 'Enter' && handleSubmit()}
++        onKeyDown={e => e.key === 'Enter' && handlePlay()}
+         maxLength={20}
+       />
+       {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+       <button
+         className="bg-teal-500 hover:bg-teal-400 text-black font-bold py-2 rounded-lg transition disabled:opacity-50"
+-        onClick={handleSubmit}
++        onClick={handlePlay}
+         disabled={loading || !nickname.trim()}
+       >
+         {loading ? 'Connecting...' : 'Play'}
+       </button>
++      <button
++        className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded-lg transition disabled:opacity-50"
++        onClick={handleLeaderboard}
++        disabled={loading || !nickname.trim()}
++      >
++        Leaderboard
++      </button>
+     </div>
+   )
+ }
+diff --git a/modules/leaderboard.go b/modules/leaderboard.go
+new file mode 100644
+index 0000000..8ca2e6c
+--- /dev/null
++++ b/modules/leaderboard.go
+@@ -0,0 +1,150 @@
++package main
++
++import (
++	"context"
++	"database/sql"
++	"encoding/json"
++
++	"github.com/heroiclabs/nakama-common/runtime"
++)
++
++const leaderboardID   = "tictactoe_wins"
++const statsCollection = "player_stats"
++const statsKey        = "stats"
++
++type PlayerStats struct {
++	Wins          int `json:"wins"`
++	Losses        int `json:"losses"`
++	Draws         int `json:"draws"`
++	CurrentStreak int `json:"current_streak"`
++	BestStreak    int `json:"best_streak"`
++}
++
++type LeaderboardEntry struct {
++	Rank          int    `json:"rank"`
++	UserID        string `json:"user_id"`
++	Username      string `json:"username"`
++	Wins          int    `json:"wins"`
++	Losses        int    `json:"losses"`
++	Draws         int    `json:"draws"`
++	CurrentStreak int    `json:"current_streak"`
++	BestStreak    int    `json:"best_streak"`
++}
++
++// recordGameResult records the outcome of a completed game (normal win, draw, or timeout).
++// For draws, pass isDraw=true; both XPlayer and OPlayer are treated as participants.
++func recordGameResult(ctx context.Context, nk runtime.NakamaModule, logger runtime.Logger, game *GameState, isDraw bool) {
++	if isDraw {
++		updateStats(ctx, nk, logger, game.XPlayer, false, true)
++		updateStats(ctx, nk, logger, game.OPlayer, false, true)
++		return
++	}
++
++	var winnerID, loserID, winnerName string
++	if game.Winner == "X" {
++		winnerID, loserID, winnerName = game.XPlayer, game.OPlayer, game.XName
++	} else if game.Winner == "O" {
++		winnerID, loserID, winnerName = game.OPlayer, game.XPlayer, game.OName
++	} else {
++		return // unrecognised winner mark — skip
++	}
++
++	if _, err := nk.LeaderboardRecordWrite(ctx, leaderboardID, winnerID, winnerName, 1, 0, nil, nil); err != nil {
++		logger.Error("LeaderboardRecordWrite failed for %s: %v", winnerID, err)
++	}
++	updateStats(ctx, nk, logger, winnerID, true, false)
++	updateStats(ctx, nk, logger, loserID, false, false)
++}
++
++// recordDisconnectResult records a mid-game disconnect win for the remaining player.
++// Looks up the winner's display name from their Nakama account.
++func recordDisconnectResult(ctx context.Context, nk runtime.NakamaModule, logger runtime.Logger, winnerID, loserID string) {
++	winnerName := ""
++	if account, err := nk.AccountGetId(ctx, winnerID); err == nil {
++		winnerName = account.GetUser().GetDisplayName()
++		if winnerName == "" {
++			winnerName = account.GetUser().GetUsername()
++		}
++	}
++	if _, err := nk.LeaderboardRecordWrite(ctx, leaderboardID, winnerID, winnerName, 1, 0, nil, nil); err != nil {
++		logger.Error("LeaderboardRecordWrite failed for %s: %v", winnerID, err)
++	}
++	updateStats(ctx, nk, logger, winnerID, true, false)
++	updateStats(ctx, nk, logger, loserID, false, false)
++}
++
++// updateStats reads, mutates, and writes back PlayerStats for a single user.
++func updateStats(ctx context.Context, nk runtime.NakamaModule, logger runtime.Logger, userID string, win, draw bool) {
++	existing, err := nk.StorageRead(ctx, []*runtime.StorageRead{
++		{Collection: statsCollection, Key: statsKey, UserID: userID},
++	})
++	stats := &PlayerStats{}
++	if err == nil && len(existing) > 0 {
++		if jsonErr := json.Unmarshal([]byte(existing[0].Value), stats); jsonErr != nil {
++			logger.Error("Failed to unmarshal stats for %s: %v", userID, jsonErr)
++		}
++	}
++
++	if win {
++		stats.Wins++
++		stats.CurrentStreak++
++		if stats.CurrentStreak > stats.BestStreak {
++			stats.BestStreak = stats.CurrentStreak
++		}
++	} else if draw {
++		stats.Draws++ // streak unchanged on draw
++	} else {
++		stats.Losses++
++		stats.CurrentStreak = 0
++	}
++
++	data, _ := json.Marshal(stats)
++	if _, err := nk.StorageWrite(ctx, []*runtime.StorageWrite{
++		{
++			Collection:      statsCollection,
++			Key:             statsKey,
++			UserID:          userID,
++			Value:           string(data),
++			PermissionRead:  2, // public read
++			PermissionWrite: 0, // server-only writes
++		},
++	}); err != nil {
++		logger.Error("StorageWrite failed for %s: %v", userID, err)
++	}
++}
++
++// GetLeaderboard is an RPC handler that returns the top 10 players by wins,
++// enriched with full stats (losses, draws, streaks) from Storage.
++func GetLeaderboard(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, payload string) (string, error) {
++	records, _, _, _, err := nk.LeaderboardRecordsList(ctx, leaderboardID, nil, 10, "", 0)
++	if err != nil {
++		logger.Error("LeaderboardRecordsList failed: %v", err)
++		return "", err
++	}
++
++	entries := make([]LeaderboardEntry, 0, len(records))
++	for i, r := range records {
++		entry := LeaderboardEntry{
++			Rank:     i + 1,
++			UserID:   r.OwnerId,
++			Username: r.Username.GetValue(),
++			Wins:     int(r.Score),
++		}
++		storageRecords, err := nk.StorageRead(ctx, []*runtime.StorageRead{
++			{Collection: statsCollection, Key: statsKey, UserID: r.OwnerId},
++		})
++		if err == nil && len(storageRecords) > 0 {
++			var stats PlayerStats
++			if json.Unmarshal([]byte(storageRecords[0].Value), &stats) == nil {
++				entry.Losses        = stats.Losses
++				entry.Draws         = stats.Draws
++				entry.CurrentStreak = stats.CurrentStreak
++				entry.BestStreak    = stats.BestStreak
++			}
++		}
++		entries = append(entries, entry)
++	}
++
++	resp, _ := json.Marshal(map[string]interface{}{"entries": entries})
++	return string(resp), nil
++}
+diff --git a/modules/main.go b/modules/main.go
+index 75104d1..78398fe 100644
+--- a/modules/main.go
++++ b/modules/main.go
+@@ -17,6 +17,16 @@ func InitModule(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runti
+ 		return err
+ 	}
+ 
++	// Create wins leaderboard — idempotent, safe to call on every startup.
++	if err := nk.LeaderboardCreate(ctx, leaderboardID, true, "desc", "incr", "", nil); err != nil {
++		logger.Error("LeaderboardCreate failed: %v", err)
++		return err
++	}
++
++	if err := initializer.RegisterRpc("get_leaderboard", GetLeaderboard); err != nil {
++		return err
++	}
++
+ 	logger.Info("TicTacToe module loaded")
+ 	return nil
+ }
+diff --git a/modules/match.go b/modules/match.go
+index 1886736..c227d89 100644
+--- a/modules/match.go
++++ b/modules/match.go
+@@ -75,7 +75,13 @@ func (m *Match) MatchLeave(ctx context.Context, logger runtime.Logger, db *sql.D
+ 	}
+ 	if len(mState.Players) < 2 {
+ 		if mState.Game.Winner == "" && !mState.Game.Draw {
+-			// Mid-game disconnect
++			// Mid-game disconnect — find the remaining player and record the result
++			var remainingID string
++			for uid := range mState.Players {
++				remainingID = uid
++			}
++			disconnectedID := presences[0].GetUserId()
++			recordDisconnectResult(ctx, nk, logger, remainingID, disconnectedID)
+ 			mState.Game.Winner = "disconnect"
+ 			broadcastState(dispatcher, &mState.Game)
+ 		} else {
+@@ -108,6 +114,7 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
+ 				mState.Game.Winner = "X"
+ 			}
+ 			mState.Game.TimedOut = true
++			recordGameResult(ctx, nk, logger, &mState.Game, false)
+ 		}
+ 		broadcastState(dispatcher, &mState.Game)
+ 	}
+@@ -169,8 +176,10 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
+ 
+ 		if winner := checkWinner(mState.Game.Board); winner != "" {
+ 			mState.Game.Winner = winner
++			recordGameResult(ctx, nk, logger, &mState.Game, false)
+ 		} else if isDraw(mState.Game.Board) {
+ 			mState.Game.Draw = true
++			recordGameResult(ctx, nk, logger, &mState.Game, true)
+ 		} else {
+ 			if mState.Game.Turn == "X" {
+ 				mState.Game.Turn = "O"

@@ -23,26 +23,39 @@ export default function Leaderboard({ session, onBack }: Props) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
 
-    useEffect(() => {
-        client.rpc(session, 'get_leaderboard', '')
+    function fetchLeaderboard() {
+        setLoading(true)
+        setError('')
+        client.rpc(session, 'get_leaderboard', {})
             .then((result) => {
                 const data = result.payload as { entries: LeaderboardEntry[] }
                 setEntries(data?.entries ?? [])
             })
             .catch(() => setError('Failed to load leaderboard.'))
             .finally(() => setLoading(false))
-    }, [session])
+    }
+
+    useEffect(() => { fetchLeaderboard() }, [session])
 
     return (
         <div className="bg-gray-900 rounded-2xl p-6 w-96 flex flex-col gap-4 shadow-xl">
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold text-teal-400">Leaderboard</h2>
-                <button
-                    onClick={onBack}
-                    className="text-gray-400 hover:text-white text-sm underline transition"
-                >
-                    ← Back
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={fetchLeaderboard}
+                        disabled={loading}
+                        className="text-gray-400 hover:text-white text-sm underline transition disabled:opacity-50"
+                    >
+                        Refresh
+                    </button>
+                    <button
+                        onClick={onBack}
+                        className="text-gray-400 hover:text-white text-sm underline transition"
+                    >
+                        ← Back
+                    </button>
+                </div>
             </div>
 
             {loading && (

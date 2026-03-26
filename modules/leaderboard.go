@@ -122,6 +122,26 @@ func GetLeaderboard(ctx context.Context, logger runtime.Logger, db *sql.DB, nk r
 		return "", err
 	}
 
+	// Batch-read all player stats in a single StorageRead call (avoids N+1).
+	reads := make([]*runtime.StorageRead, len(records))
+	for i, r := range records {
+		reads[i] = &runtime.StorageRead{
+			Collection: statsCollection,
+			Key:        statsKey,
+			UserID:     r.OwnerId,
+		}
+	}
+	storageRecords, err := nk.StorageRead(ctx, reads)
+	statsByUser := make(map[string]*PlayerStats, len(storageRecords))
+	if err == nil {
+		for _, sr := range storageRecords {
+			var stats PlayerStats
+			if json.Unmarshal([]byte(sr.Value), &stats) == nil {
+				statsByUser[sr.UserId] = &stats
+			}
+		}
+	}
+
 	entries := make([]LeaderboardEntry, 0, len(records))
 	for i, r := range records {
 		entry := LeaderboardEntry{
@@ -130,21 +150,15 @@ func GetLeaderboard(ctx context.Context, logger runtime.Logger, db *sql.DB, nk r
 			Username: r.Username.GetValue(),
 			Wins:     int(r.Score),
 		}
-		storageRecords, err := nk.StorageRead(ctx, []*runtime.StorageRead{
-			{Collection: statsCollection, Key: statsKey, UserID: r.OwnerId},
-		})
-		if err == nil && len(storageRecords) > 0 {
-			var stats PlayerStats
-			if json.Unmarshal([]byte(storageRecords[0].Value), &stats) == nil {
-				entry.Losses        = stats.Losses
-				entry.Draws         = stats.Draws
-				entry.CurrentStreak = stats.CurrentStreak
-				entry.BestStreak    = stats.BestStreak
-			}
+		if stats, ok := statsByUser[r.OwnerId]; ok {
+			entry.Losses = stats.Losses
+			entry.Draws = stats.Draws
+			entry.CurrentStreak = stats.CurrentStreak
+			entry.BestStreak = stats.BestStreak
 		}
 		entries = append(entries, entry)
 	}
 
-	resp, _ := json.Marshal(map[string]interface{}{"entries": entries})
+	resp, _ := json.Marshal(map[string]any{"entries": entries})
 	return string(resp), nil
 }
