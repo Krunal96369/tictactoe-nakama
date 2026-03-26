@@ -17,6 +17,16 @@ func InitModule(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runti
 		return err
 	}
 
+	// Create wins leaderboard — idempotent, safe to call on every startup.
+	if err := nk.LeaderboardCreate(ctx, leaderboardID, true, "desc", "incr", "", nil); err != nil {
+		logger.Error("LeaderboardCreate failed: %v", err)
+		return err
+	}
+
+	if err := initializer.RegisterRpc("get_leaderboard", GetLeaderboard); err != nil {
+		return err
+	}
+
 	logger.Info("TicTacToe module loaded")
 	return nil
 }

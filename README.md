@@ -32,7 +32,7 @@ A production-ready, real-time multiplayer Tic-Tac-Toe game with **server-authori
 
 ### Design Decisions
 
-- **Server is the single source of truth.** The client sends move *intents* (e.g., "place at index 4"). The server validates (correct turn? cell empty?), updates state, and broadcasts to all players. No game logic runs on the client.
+- **Server handles the logic** The client sends move *intents* (e.g., "place at index 4"). The server validates (correct turn? cell empty?), updates state, and broadcasts to all players. No game logic runs on the client.
 - **Nakama Matchmaker** pairs players automatically — no manual room codes needed.
 - **Device authentication** is used for frictionless onboarding. A known limitation is that clearing browser storage creates a new identity. In production, this would be mitigated by linking accounts to email/social auth via Nakama's account linking APIs.
 - **WebSocket communication** uses numbered opcodes for different message types:
@@ -46,6 +46,14 @@ A production-ready, real-time multiplayer Tic-Tac-Toe game with **server-authori
 | 5 | Server → Client | Opponent left notification |
 
 `GameState` (opcode 1 payload) includes `turn_time_left` (int, 0–30) and `timed_out` (bool) for the timer feature. The server broadcasts state every tick while a game is active, keeping the client countdown in sync without client-side timers.
+
+| RPC ID | Direction | Purpose |
+|--------|-----------|---------|
+| `get_leaderboard` | Client → Server (HTTP RPC) | Returns top 10 players: wins, losses, draws, current streak, best streak |
+
+**Persistence layers:**
+- **Nakama Leaderboard API** (`tictactoe_wins`) — sorted global ranking by win count
+- **Nakama Storage API** (`player_stats/stats` per user) — extended stats: losses, draws, current streak, best streak
 
 ---
 
@@ -251,11 +259,11 @@ Make sure `nakama.ts` points to your production server IP before building.
 - ✅ Player nicknames displayed in-game
 - ✅ Graceful disconnect handling (auto-win for remaining player)
 - ✅ Rematch system (both players vote → instant new game)
-- ✅ Concurrent game support (Nakama handles session isolation)
-- ✅ Timer-based game mode (30s per turn)
 
-### Planned
-- ⬜ Leaderboard system (wins, losses, streaks)
+### Bonus
+- ✅ Timer-based game mode (30s per turn)
+- ✅ Leaderboard system (wins, losses, draws, win streaks — Nakama Leaderboard + Storage APIs)
+- ✅ Concurrent game support (Nakama handles session isolation)
 
 ---
 

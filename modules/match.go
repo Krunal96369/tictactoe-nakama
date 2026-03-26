@@ -75,7 +75,13 @@ func (m *Match) MatchLeave(ctx context.Context, logger runtime.Logger, db *sql.D
 	}
 	if len(mState.Players) < 2 {
 		if mState.Game.Winner == "" && !mState.Game.Draw {
-			// Mid-game disconnect
+			// Mid-game disconnect — find the remaining player and record the result
+			var remainingID string
+			for uid := range mState.Players {
+				remainingID = uid
+			}
+			disconnectedID := presences[0].GetUserId()
+			recordDisconnectResult(ctx, nk, logger, remainingID, disconnectedID)
 			mState.Game.Winner = "disconnect"
 			broadcastState(dispatcher, &mState.Game)
 		} else {
@@ -108,6 +114,7 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 				mState.Game.Winner = "X"
 			}
 			mState.Game.TimedOut = true
+			recordGameResult(ctx, nk, logger, &mState.Game, false)
 		}
 		broadcastState(dispatcher, &mState.Game)
 	}
@@ -169,8 +176,10 @@ func (m *Match) MatchLoop(ctx context.Context, logger runtime.Logger, db *sql.DB
 
 		if winner := checkWinner(mState.Game.Board); winner != "" {
 			mState.Game.Winner = winner
+			recordGameResult(ctx, nk, logger, &mState.Game, false)
 		} else if isDraw(mState.Game.Board) {
 			mState.Game.Draw = true
+			recordGameResult(ctx, nk, logger, &mState.Game, true)
 		} else {
 			if mState.Game.Turn == "X" {
 				mState.Game.Turn = "O"
