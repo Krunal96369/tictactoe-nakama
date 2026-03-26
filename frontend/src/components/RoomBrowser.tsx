@@ -39,24 +39,35 @@ export default function RoomBrowser({ session, gameMode, onMatchFound, onCancel 
 
   const fetchRooms = useCallback(async () => {
     try {
+      // Fetch all authoritative matches and filter client-side.
+      // Nakama's query parameter syntax varies by version, so parsing
+      // the label JSON ourselves is the most reliable approach.
       const result = await client.listMatches(
         session,
-        10,          // limit
+        100,         // limit
         true,        // authoritative
-        undefined,   // label (not used for filtering)
+        undefined,   // label
         0,           // minSize
-        1,           // maxSize: only rooms waiting for a player
-        `+label.open:true +label.mode:${gameMode}`
+        undefined,   // maxSize
+        undefined    // query
       )
       const entries: RoomEntry[] = (result.matches || [])
-        .filter(m => m.label && m.match_id)
+        .filter(m => {
+          if (!m.label || !m.match_id) return false
+          try {
+            const label = JSON.parse(m.label) as MatchLabel
+            return label.open && label.mode === gameMode
+          } catch {
+            return false
+          }
+        })
         .map(m => ({
           matchId: m.match_id!,
           label: JSON.parse(m.label!) as MatchLabel,
         }))
       setRooms(entries)
-    } catch {
-      // Silently fail on poll — user sees stale list at worst
+    } catch (err) {
+      console.error('Failed to fetch rooms:', err)
     } finally {
       setLoading(false)
     }
